@@ -1,0 +1,11 @@
+{
+  "instrument": 260105,
+  "tradingsymbol": "NIFTY BANK",
+  "start_date": "2016-01-01",
+  "end_date": "2022-02-28",
+  "dbfile_path": "/Volumes/HD2/OptionData/NIFTYBANK.db",
+  "table_name": "niftybank",
+  "period": "minute"
+}
+
+
