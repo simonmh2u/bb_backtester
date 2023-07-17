@@ -5,7 +5,6 @@ local_conf.py
 *ticker-app.log
 log/*.log
 *.pyc
-*.db
 *.ipynb
 .ipynb_checkpoints/
 .Python
