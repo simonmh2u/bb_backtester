@@ -1,7 +1,8 @@
 {
   "start_date": "2020-01-01",
   "end_date": "2020-01-31",
-  "capital": 1200000,
+  "capital": 600000,
+  "quantity": 450,
   "output_filename": "simple_30_percent_strangle_stats.html",
   "description": "",
   "strike_dbpath": "test.db",
@@ -12,9 +13,10 @@
   "strangle_delta": 0,
   "position_initiate_time": {
     "hour": 9,
-    "minute": 20
+    "minute": 29
   },
-  "fixed_sl_percentage": 0.3,
+  "mtm_sl_percentage": 0.02,
+  "fixed_sl_percentage": 0.15,
   "fixed_sl_points": 100,
   "fixed_portfolio_sl": -12000,
   "fixed_portfolio_tp": 1000,
