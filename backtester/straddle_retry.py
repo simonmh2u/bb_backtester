@@ -36,7 +36,15 @@ class TestStrategy(bt.Strategy):
         self.ce_price = None
         self.pe_price = None
         self.skip_all_remaining_candles = False
+        self.only_pe_position = False
+        self.only_ce_position = False
         self.config = self.params.config
+        self.capital = self.config["capital"]
+        self.tsl_start = self.config["trailing_sl_percentage"]
+        self.tsl_delta = self.config["trailing_sl_delta_increment"]
+        self.strategy_profit = self.config["capital"] * self.tsl_start
+
+
 
 
     def notify_trade(self, trade):
@@ -63,6 +71,9 @@ class TestStrategy(bt.Strategy):
             self.log('Order Canceled/Margin/Rejected for {}'.format(order.product_type))
 
     def next(self):
+        self.only_pe_position = False
+        self.only_ce_position = False
+
         current_candle_datetime = self.data0.datetime.datetime()
         try:
             data0_ticker = self.data0._dataname.loc[current_candle_datetime].ticker
@@ -73,10 +84,24 @@ class TestStrategy(bt.Strategy):
         if self.config["fixed_sl_percentage"]:
             sl_pe = sl_ce = self.config["fixed_sl_percentage"]
 
+        if self.getposition(self.data0) and not self.getposition(self.data1):
+            self.only_pe_position = True
+
+        if self.getposition(self.data1) and not self.getposition(self.data0):
+            self.only_ce_position = True
+
+        # To enable below condition we need good comparison of returns with and without this condition
+        # if self.order:
+        #     self.pe_price = self.order.executed.price
+        #
+        # if self.order1:
+        #     self.ce_price = self.order1.executed.price
+
 
         if self.data0.datetime.datetime().time().hour == self.config["position_initiate_time"]["hour"] \
                 and self.data0.datetime.datetime().time().minute == self.config["position_initiate_time"]["minute"]:
             self.skip_all_remaining_candles = False
+            self.tsl_start = self.config["trailing_sl_percentage"]
 
         if self.skip_all_remaining_candles:
             self.pnl = 0
@@ -84,7 +109,7 @@ class TestStrategy(bt.Strategy):
 
         end_of_day_minute = self.data0.datetime.datetime().time().hour == 15 and self.data0.datetime.datetime().time().minute in [
             20, 21]
-        flag = False
+
         # skip config days
         dayofweek = self.data0.datetime.datetime().date().strftime("%A")
         if dayofweek in self.config["blind_skip_days_list"]:
@@ -103,7 +128,30 @@ class TestStrategy(bt.Strategy):
 
         total_pnl = pnl + pnl1
         #self.log('position pnl: {} trade pnl: {}, total pnl: {}'.format(total_pnl, self.pnl, total_pnl + self.pnl))
-        # import ipdb;ipdb.set_trace()
+
+        # Trailing Profit MTM Logic
+        if self.tsl_start and total_pnl > self.strategy_profit:
+            lower_strategy_sl = self.tsl_start - self.tsl_delta
+            upper_strategy_sl = self.tsl_start + self.tsl_delta
+            if total_pnl > (self.capital * upper_strategy_sl):
+                self.log("TSL activated at {} % for profit {}".format(upper_strategy_sl, total_pnl))
+                self.tsl_start = upper_strategy_sl
+            elif total_pnl < (self.capital * lower_strategy_sl):
+                if self.only_pe_position:
+                    self.log("Exiting PE leg only, TSL hit at {} % for profit {}".format(lower_strategy_sl, total_pnl))
+                    self.log("BUY CREATE TSL, {} - {}".format(self.data0.close[0], data0_ticker))
+                    self.order_close = self.buy(self.data0)
+                    self.order_close.product_type = self.data0._name
+                    self.pe_retry_counter = 5
+
+                elif self.only_ce_position:
+                    self.log("Exiting CE leg only, TSL hit at {} % for profit {}".format(lower_strategy_sl, total_pnl))
+                    self.log('BUY CREATE TSL, {} - {}'.format(self.data1.close[0], data1_ticker))
+                    self.order1_close = self.buy(self.data1)
+                    self.order1_close.product_type = self.data1._name
+                    self.ce_retry_counter = 5
+
+
         # Check if we are in the market
         if not self.getposition(self.data0):
             if self.pe_price and self.data0.close[0] < self.pe_price  and self.pe_retry_counter <= 2:
@@ -111,7 +159,6 @@ class TestStrategy(bt.Strategy):
                                                                self.data0.datetime.date().strftime("%A"),self.pe_retry_counter))
                 self.order = self.sell(self.data0)
                 self.order.product_type = self.data0._name
-                #self.pe_price = self.order.executed.price
 
             if self.data0.datetime.datetime().time().hour == self.config["position_initiate_time"]["hour"] \
                     and self.data0.datetime.datetime().time().minute == self.config["position_initiate_time"]["minute"]:
@@ -128,7 +175,6 @@ class TestStrategy(bt.Strategy):
                 self.order_close = self.buy(self.data0)
                 self.order_close.product_type = self.data0._name
                 self.pe_retry_counter += 1
-                flag = True
 
 
         if not self.getposition(self.data1):
@@ -137,7 +183,6 @@ class TestStrategy(bt.Strategy):
                                                                self.data1.datetime.date().strftime("%A"), self.ce_retry_counter))
                 self.order1 = self.sell(self.data1)
                 self.order1.product_type = self.data1._name
-                #self.ce_price = self.order1.executed.price
 
             if self.data1.datetime.datetime().time().hour == self.config["position_initiate_time"]["hour"] \
                     and self.data1.datetime.datetime().time().minute == self.config["position_initiate_time"]["minute"]:
@@ -153,7 +198,6 @@ class TestStrategy(bt.Strategy):
                 self.order1_close = self.buy(self.data1)
                 self.order1_close.product_type = self.data1._name
                 self.ce_retry_counter += 1
-                flag = True
 
         # Below is exit condition based on portfolio loss
         if not end_of_day_minute and ((total_pnl + self.pnl) < (self.config["capital"] * -self.config["mtm_sl_percentage"])):
@@ -179,7 +223,6 @@ class TestStrategy(bt.Strategy):
             self.order1 = None
             self.ce_price = None
             self.pe_price = None
-            # self.pnl = 0
 
         if end_of_day_minute:
             self.log("PNL EOD: {}".format(total_pnl + self.pnl))
@@ -203,7 +246,6 @@ class TestStrategy(bt.Strategy):
             self.ce_price = None
             self.pe_price = None
             self.skip_all_remaining_candles = True
-            # self.pnl = 0
 
         # # The below because not able to set self.pnl = 0 in above block
         # if self.data0.datetime.datetime().time().hour == 15 and self.data0.datetime.datetime().time().minute > 20:

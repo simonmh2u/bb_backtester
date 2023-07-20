@@ -1,0 +1,24 @@
+{
+  "start_date": "2020-01-01",
+  "end_date": "2020-01-31",
+  "capital": 600000,
+  "quantity": 450,
+  "output_filename": "straddle_retry_thrice_stats.html",
+  "description": "",
+  "strike_dbpath": "jan2020.db",
+  "underlying_dbpath": "NIFTY50.db",
+  "strike_table_name": "nifty_options_2020",
+  "underlying_table_name": "nifty",
+  "strategy_name": "Simple Straddle 15% SL - Retry Thrice",
+  "strangle_delta": 0,
+  "position_initiate_time": {
+    "hour": 9,
+    "minute": 29
+  },
+  "mtm_sl_percentage": 0.02,
+  "fixed_sl_percentage": 0.15,
+  "fixed_sl_points": 100,
+  "trailing_sl_percentage": 0,
+  "trailing_sl_delta_increment": 0.005,
+  "blind_skip_days_list": []
+}
