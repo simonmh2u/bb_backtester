@@ -1,6 +1,5 @@
 import re, os, sys, sqlite3
 import pandas as pd
-import pandas_ta as ta
 import datetime
 from dateutil.parser import parse
 from utils.log import logger_instance

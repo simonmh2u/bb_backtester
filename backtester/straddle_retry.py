@@ -73,12 +73,15 @@ class TestStrategy(bt.Strategy):
     def next(self):
         self.only_pe_position = False
         self.only_ce_position = False
-
+        data0_ticker = "PE"
+        data1_ticker = "CE"
         current_candle_datetime = self.data0.datetime.datetime()
         try:
             data0_ticker = self.data0._dataname.loc[current_candle_datetime].ticker
             data1_ticker = self.data1._dataname.loc[current_candle_datetime].ticker
         except Exception as e:
+            #import ipdb;ipdb.set_trace()
+            logging.exception(e)
             return
 
         if self.config["fixed_sl_percentage"]:
@@ -91,11 +94,11 @@ class TestStrategy(bt.Strategy):
             self.only_ce_position = True
 
         # To enable below condition we need good comparison of returns with and without this condition
-        # if self.order:
-        #     self.pe_price = self.order.executed.price
-        #
-        # if self.order1:
-        #     self.ce_price = self.order1.executed.price
+        if self.order:
+            self.pe_price = self.order.executed.price
+
+        if self.order1:
+            self.ce_price = self.order1.executed.price
 
 
         if self.data0.datetime.datetime().time().hour == self.config["position_initiate_time"]["hour"] \
@@ -129,14 +132,40 @@ class TestStrategy(bt.Strategy):
         total_pnl = pnl + pnl1
         #self.log('position pnl: {} trade pnl: {}, total pnl: {}'.format(total_pnl, self.pnl, total_pnl + self.pnl))
 
+
+        # Below is exit condition based on portfolio loss
+        if not end_of_day_minute and ((total_pnl + self.pnl) < (self.config["capital"] * -self.config["mtm_sl_percentage"])):
+            if self.getposition(self.data0):
+                self.order_close = self.buy(self.data0)
+                self.order_close.product_type = self.data0._name
+                self.log('BUY CREATE MTM SL, {} {}'.format(self.data0.close[0], data0_ticker))
+                self.pe_retry_counter = 0
+                self.pe_price = None
+
+            if self.getposition(self.data1):
+                self.order1_close = self.buy(self.data1)
+                self.order1_close.product_type = self.data1._name
+                self.log('BUY CREATE MTM SL, {} {}'.format(self.data1.close[0], data1_ticker))
+                self.ce_retry_counter = 0
+                self.ce_price = None
+
+            self.log("PNL MTM: {}".format(total_pnl + self.pnl))
+            self.skip_all_remaining_candles = True
+            self.order_close = None
+            self.order1_close = None
+            self.order = None
+            self.order1 = None
+            self.ce_price = None
+            self.pe_price = None
+
         # Trailing Profit MTM Logic
-        if self.tsl_start and total_pnl > self.strategy_profit:
+        if self.tsl_start and (total_pnl + self.pnl) > self.strategy_profit and (self.only_pe_position ^ self.only_ce_position):
             lower_strategy_sl = self.tsl_start - self.tsl_delta
             upper_strategy_sl = self.tsl_start + self.tsl_delta
-            if total_pnl > (self.capital * upper_strategy_sl):
+            if (total_pnl + self.pnl) > (self.capital * upper_strategy_sl):
                 self.log("TSL activated at {} % for profit {}".format(upper_strategy_sl, total_pnl))
                 self.tsl_start = upper_strategy_sl
-            elif total_pnl < (self.capital * lower_strategy_sl):
+            elif (total_pnl + self.pnl) < (self.capital * lower_strategy_sl):
                 if self.only_pe_position:
                     self.log("Exiting PE leg only, TSL hit at {} % for profit {}".format(lower_strategy_sl, total_pnl))
                     self.log("BUY CREATE TSL, {} - {}".format(self.data0.close[0], data0_ticker))
@@ -199,30 +228,7 @@ class TestStrategy(bt.Strategy):
                 self.order1_close.product_type = self.data1._name
                 self.ce_retry_counter += 1
 
-        # Below is exit condition based on portfolio loss
-        if not end_of_day_minute and ((total_pnl + self.pnl) < (self.config["capital"] * -self.config["mtm_sl_percentage"])):
-            if self.getposition(self.data0):
-                self.order_close = self.buy(self.data0)
-                self.order_close.product_type = self.data0._name
-                self.log('BUY CREATE MTM SL, {} {}'.format(self.data0.close[0], data0_ticker))
-                self.pe_retry_counter = 0
-                self.pe_price = None
 
-            if self.getposition(self.data1):
-                self.order1_close = self.buy(self.data1)
-                self.order1_close.product_type = self.data1._name
-                self.log('BUY CREATE MTM SL, {} {}'.format(self.data1.close[0], data1_ticker))
-                self.ce_retry_counter = 0
-                self.ce_price = None
-
-            self.log("PNL MTM: {}".format(total_pnl + self.pnl))
-            self.skip_all_remaining_candles = True
-            self.order_close = None
-            self.order1_close = None
-            self.order = None
-            self.order1 = None
-            self.ce_price = None
-            self.pe_price = None
 
         if end_of_day_minute:
             self.log("PNL EOD: {}".format(total_pnl + self.pnl))
@@ -289,6 +295,7 @@ def main():
         df_fut = pd.read_sql_query(underlying_query_string,
                                    con1, params=[d], parse_dates=True, index_col='date')
         if df_fut.empty:
+            logging.info("Skipping : {}".format(d))
             continue
         df_fut.index = pd.to_datetime(df_fut.index)
         # for example if we are taking a position at 09:20 then [4] ,09:30 then [15] as these are 1 minute candles
@@ -302,21 +309,20 @@ def main():
                                                                                                                pe_strike,
                                                                                                                atm_strike,
                                                                                                                d1, close))
-        query_string = "SELECT * from {} where strike = ? and date(date) = date(?) and expiry_date = ? and type = ?".format(
+        query_string = "SELECT distinct * from {} where strike = ? and date(date) = date(?) and expiry_date = ? and type = ?".format(
             table_name)
         df_opt_pe = pd.read_sql_query(query_string, con, params=[pe_strike, d, d1, 'PE'], parse_dates=True,
                                       index_col='date')
         df_opt_ce = pd.read_sql_query(query_string, con, params=[ce_strike, d, d1, 'CE'], parse_dates=True,
                                       index_col='date')
-
         df_opt_pe.index = pd.to_datetime(df_opt_pe.index)
         df_opt_pe = df_opt_pe.sort_index()
 
         df_opt_ce.index = pd.to_datetime(df_opt_ce.index)
         df_opt_ce = df_opt_ce.sort_index()
         # skip the day if first tick is not at 9:15
-        if not df_opt_ce.empty and (df_opt_ce.index[0].minute != 15 or df_opt_pe.index[0].minute != 15):
-            continue
+        # if not df_opt_ce.empty and (df_opt_ce.index[0].minute != 15 or df_opt_pe.index[0].minute != 15):
+        #     continue
 
         df_final_ce = df_final_ce.append(df_opt_ce)
         df_final_pe = df_final_pe.append(df_opt_pe)
