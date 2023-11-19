@@ -1,11 +1,11 @@
 {
-  "start_date": "2022-01-01",
-  "end_date": "2022-12-30",
+  "start_date": "2023-01-01",
+  "end_date": "2023-07-31",
   "capital": 600000,
   "quantity": 300,
   "output_filename": "straddle_retry_thrice_stats.html",
   "description": "",
-  "strike_dbpath": "/Volumes/HD2/OptionData/nifty_2022.db",
+  "strike_dbpath": "/Volumes/HD2/OptionData/nifty_2023.db",
   "underlying_dbpath": "/Volumes/HD2/OptionData/NIFTY50.db",
   "strike_table_name": "nifty",
   "underlying_table_name": "nifty",
@@ -18,7 +18,7 @@
   "mtm_sl_percentage": 0.02,
   "fixed_sl_percentage": 0.15,
   "fixed_sl_points": 100,
-  "trailing_sl_percentage": 0.0,
+  "trailing_sl_percentage": 0,
   "trailing_sl_delta_increment": 0.002,
   "blind_skip_days_list": []
 }

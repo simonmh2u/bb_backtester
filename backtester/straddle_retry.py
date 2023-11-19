@@ -41,8 +41,10 @@ class TestStrategy(bt.Strategy):
         self.config = self.params.config
         self.capital = self.config["capital"]
         self.tsl_start = self.config["trailing_sl_percentage"]
+        self.tsl_start_original = self.config["trailing_sl_percentage"]
         self.tsl_delta = self.config["trailing_sl_delta_increment"]
         self.strategy_profit = self.config["capital"] * self.tsl_start
+        self.tsl_activated = False
 
 
 
@@ -110,8 +112,9 @@ class TestStrategy(bt.Strategy):
             self.pnl = 0
             return
 
-        end_of_day_minute = self.data0.datetime.datetime().time().hour == 15 and self.data0.datetime.datetime().time().minute in [
-            20, 21]
+        # end_of_day_minute = self.data0.datetime.datetime().time().hour == 15 and self.data0.datetime.datetime().time().minute in [
+        #     20, 21]
+        end_of_day_minute = True if self.data0.datetime.datetime().time() > datetime.time(15, 21, 00) else False
 
         # skip config days
         dayofweek = self.data0.datetime.datetime().date().strftime("%A")
@@ -160,25 +163,33 @@ class TestStrategy(bt.Strategy):
 
         # Trailing Profit MTM Logic
         if self.tsl_start and (total_pnl + self.pnl) > self.strategy_profit and (self.only_pe_position ^ self.only_ce_position):
-            lower_strategy_sl = self.tsl_start - self.tsl_delta
-            upper_strategy_sl = self.tsl_start + self.tsl_delta
-            if (total_pnl + self.pnl) > (self.capital * upper_strategy_sl):
-                self.log("TSL activated at {} % for profit {}".format(upper_strategy_sl, total_pnl))
-                self.tsl_start = upper_strategy_sl
-            elif (total_pnl + self.pnl) < (self.capital * lower_strategy_sl):
-                if self.only_pe_position:
-                    self.log("Exiting PE leg only, TSL hit at {} % for profit {}".format(lower_strategy_sl, total_pnl))
-                    self.log("BUY CREATE TSL, {} - {}".format(self.data0.close[0], data0_ticker))
-                    self.order_close = self.buy(self.data0)
-                    self.order_close.product_type = self.data0._name
-                    self.pe_retry_counter = 5
+            self.lower_strategy_sl = self.tsl_start - self.tsl_delta
+            self.upper_strategy_sl = self.tsl_start + self.tsl_delta
+            if (total_pnl + self.pnl) > (self.capital * self.upper_strategy_sl):
+                self.tsl_activated = True
+                self.log("TSL activated at {} % for profit {}".format(self.upper_strategy_sl, total_pnl+self.pnl))
+                self.tsl_start = self.upper_strategy_sl
+        if self.tsl_activated and (total_pnl + self.pnl) < (self.capital * self.lower_strategy_sl):
+            if self.only_pe_position:
+                self.log("Exiting PE leg only, TSL hit at {} % for profit {}".format(self.lower_strategy_sl, total_pnl+self.pnl))
+                self.log("BUY CREATE TSL, {} - {}".format(self.data0.close[0], data0_ticker))
+                self.order_close = self.buy(self.data0)
+                self.order_close.product_type = self.data0._name
+                self.pe_retry_counter = 5
+                self.tsl_activated = False
+                self.tsl_start = self.tsl_start * 2 # twice the original once TSL is hit to ensure other leg doesnt exit too early
+                self.strategy_profit = self.capital * self.tsl_start
 
-                elif self.only_ce_position:
-                    self.log("Exiting CE leg only, TSL hit at {} % for profit {}".format(lower_strategy_sl, total_pnl))
-                    self.log('BUY CREATE TSL, {} - {}'.format(self.data1.close[0], data1_ticker))
-                    self.order1_close = self.buy(self.data1)
-                    self.order1_close.product_type = self.data1._name
-                    self.ce_retry_counter = 5
+
+            elif self.only_ce_position:
+                self.log("Exiting CE leg only, TSL hit at {} % for profit {}".format(self.lower_strategy_sl, total_pnl+self.pnl))
+                self.log('BUY CREATE TSL, {} - {}'.format(self.data1.close[0], data1_ticker))
+                self.order1_close = self.buy(self.data1)
+                self.order1_close.product_type = self.data1._name
+                self.ce_retry_counter = 5
+                self.tsl_activated = False
+                self.tsl_start = self.tsl_start * 2 # twice the original once TSL is hit to ensure other leg doesnt exit too early
+                self.strategy_profit = self.capital * self.tsl_start
 
 
         # Check if we are in the market
@@ -252,6 +263,7 @@ class TestStrategy(bt.Strategy):
             self.ce_price = None
             self.pe_price = None
             self.skip_all_remaining_candles = True
+            self.tsl_activated = False
 
         # # The below because not able to set self.pnl = 0 in above block
         # if self.data0.datetime.datetime().time().hour == 15 and self.data0.datetime.datetime().time().minute > 20:
@@ -335,6 +347,7 @@ def main():
     cerebro.addsizer(bt.sizers.SizerFix, stake=config["quantity"])
     cerebro.addanalyzer(bt.analyzers.PyFolio, _name='pyfolio')
     cerebro.addanalyzer(bt.analyzers.TradeAnalyzer, _name='tanal')
+    cerebro.broker = bt.brokers.BackBroker(slip_perc=0.005)
     cerebro.broker.setcash(config["capital"])
     print("Run start")
     logging.info("Logging Config {}".format(config))
