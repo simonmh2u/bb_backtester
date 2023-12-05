@@ -1,4 +1,7 @@
 import requests
+from utils.log import logger_instance
+
+logging = logger_instance
 
 
 def fetch_icharts_ohlc(symbol, timeframe="1min"):
@@ -34,14 +37,20 @@ def fetch_icharts_ohlc(symbol, timeframe="1min"):
         'sid': ichart_session_key,
     }
 
-    response = requests.get(
-        'https://www.icharts.in/opt/hcharts/stx8req/php/getdataForOptions_curr_atp.php',
-        params=params,
-        cookies=cookies,
-        headers=headers,
-    )
     json_data = []
-    if response.status_code == 200:
-        s_data = response.content.decode("utf-8")
-        json_data = s_data.split("\n")
+
+    try:
+        response = requests.get(
+            'https://www.icharts.in/opt/hcharts/stx8req/php/getdataForOptions_curr_atp.php',
+            params=params,
+            cookies=cookies,
+            headers=headers,
+        )
+        if response.status_code == 200:
+            s_data = response.content.decode("utf-8")
+            json_data = s_data.split("\n")
+            return json_data
+    except Exception as e:
+        logging.exception(
+            "Error in fetching icharts data for symbol {} with error {}".format(symbol, e))
         return json_data

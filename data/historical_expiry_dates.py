@@ -1,9 +1,17 @@
 expiry_date_list = [
-    '01AUG19',
-    '08AUG19',
-    '14AUG19',
-    '22AUG19',
-    '29AUG19'
+    '10AUG23',
+    '17AUG23',
+    '24AUG23',
+    '31AUG23',
+    '28SEP23',
+    '05OCT23',
+    '12OCT23',
+    '19OCT23',
+    '26OCT23',
+    '02NOV23',
+    '09NOV23',
+    '16NOV23',
+    '23NOV23'
 ]
 
 expiry_date_list1 = [

@@ -31,7 +31,7 @@ def get_ichart_specific_expiry_string(strike, type, expiry_date):
 def save_option_data():
     underlying_dbpath = "/Volumes/HD2/OptionData/NIFTY50.db"
     underlying_table_name = "nifty"
-    db_path = "/Volumes/HD2/OptionData/nifty_2022.db"
+    db_path = "/Volumes/HD2/OptionData/nifty_2023.db"
     table_name = "nifty"
     # start_date, end_date = get_dates()
     # datelist = pd.date_range(start=start_date, end=end_date).tolist()
